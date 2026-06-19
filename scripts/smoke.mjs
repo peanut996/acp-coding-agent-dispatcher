@@ -29,14 +29,16 @@ try {
 
   if (
     result.stderr
-    || result.serverVersion !== "0.3.0"
+    || result.serverVersion !== "0.3.1"
     || result.discoveryCount < 1
     || result.runStatus !== "completed"
     || result.adapterStatus !== "opencode_acp"
     || result.providerSessionId !== "fake-opencode-session"
+    || !result.availableModels?.some((model) => model.value === "opencode-go/glm-5.2")
     || result.failureStatus !== "timed_out"
     || !result.failureReason?.includes("Insufficient balance")
     || !result.agentErrors?.some((error) => error.includes("Rate limit exceeded"))
+    || !result.failureAvailableModels?.some((model) => model.value === "opencode-go/glm-5.2")
     || result.claudeStatus !== "completed"
     || result.claudeAdapterStatus !== "claude_cli"
     || result.claudeProviderSessionId !== "fake-claude-session"
@@ -73,7 +75,7 @@ process.stdin.on("data", (chunk) => {
     if (message.method === "initialize") {
       write({ jsonrpc: "2.0", id: message.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {}, list: {} } }, agentInfo: { name: "Fake OpenCode", version: "0.0.0" }, authMethods: [] } });
     } else if (message.method === "session/new" || message.method === "session/resume") {
-      write({ jsonrpc: "2.0", id: message.id, result: { sessionId: "fake-opencode-session" } });
+      write({ jsonrpc: "2.0", id: message.id, result: { sessionId: "fake-opencode-session", configOptions: [{ id: "model", title: "Model", category: "model", type: "select", options: [{ value: "opencode-go/glm-5.2", label: "GLM-5.2" }, { value: "opencode-go/kimi-k2", label: "Kimi K2" }] }] } });
     } else if (message.method === "session/prompt") {
       const promptText = (message.params.prompt ?? []).map((part) => part.text ?? "").join("\\n");
       if (promptText.includes("Trigger failure")) {
@@ -278,10 +280,12 @@ async function runMcpSmoke(home, worktree, binDir) {
     runStatus: parsedToolResults[4]?.status,
     adapterStatus: parsedToolResults[4]?.adapterStatus,
     providerSessionId: parsedToolResults[4]?.providerSessionId,
+    availableModels: parsedToolResults[4]?.availableModels,
     failureStatus: parsedToolResults[5]?.status,
     failureReason: parsedToolResults[5]?.failureReason,
     agentErrors: parsedToolResults[5]?.agentErrors,
     failureProviderSessionId: parsedToolResults[5]?.providerSessionId,
+    failureAvailableModels: parsedToolResults[5]?.availableModels,
     claudeStatus: parsedToolResults[6]?.status,
     claudeAdapterStatus: parsedToolResults[6]?.adapterStatus,
     claudeProviderSessionId: parsedToolResults[6]?.providerSessionId,

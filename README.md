@@ -14,7 +14,10 @@ This repository is an alpha implementation. It can:
 - capture current git worktree state for recorded jobs.
 - run OpenCode through ACP stdio when external launch is explicitly enabled.
 - run Claude Code, Cursor Agent, and Codex CLI through synchronous CLI fallback adapters.
+- surface ACP session config options and available model choices without setting a model by default.
 - return ACP adapter failures in `failureReason` and `agentErrors`, including provider-side errors such as balance or rate-limit failures.
+
+The dispatcher does not set an ACP model by default. When an ACP agent exposes session `configOptions`, the OpenCode adapter records summarized options and returns model choices in `availableModels`; failures include the same data so Codex can ask the user which model to retry with.
 
 External launch is disabled by default. `run_coding_agent` records a completed `record_only` job unless `launchExternalAgents` is enabled. Runnable adapters currently require `async=false`; async job execution is still tracked as a later milestone.
 

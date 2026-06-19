@@ -8,7 +8,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const SERVER_NAME = "acp-coding-agent-dispatcher";
-const SERVER_VERSION = "0.3.0";
+const SERVER_VERSION = "0.3.1";
 const DATA_DIR = path.join(os.homedir(), ".codex", "agent-dispatcher");
 const REGISTRY_PATH = path.join(DATA_DIR, "registry.json");
 const CONFIG_PATH = path.join(DATA_DIR, "config.json");
@@ -519,6 +519,8 @@ async function createJob(args) {
     stopReason: job.stopReason,
     failureReason: job.failureReason ?? null,
     agentErrors: job.agentErrors ?? [],
+    availableModels: job.availableModels ?? session.availableModels ?? [],
+    agentConfigOptions: job.agentConfigOptions ?? session.agentConfigOptions ?? [],
     selectionReason: selected.reason,
     message: `${selected.agentId} job recorded by dispatcher alpha. Use get_coding_agent_job to inspect it.`
   };
@@ -850,6 +852,8 @@ async function runOpenCodeAcpJob({ args, job, session, selectedAgent, timeoutSec
   const events = [];
   const startedAt = Date.now();
   let providerSessionId = session.providerSessionId ?? null;
+  let agentConfigOptions = [];
+  let availableModels = [];
   const client = new AcpStdioClient({
     command: selectedAgent.installedPath ?? selectedAgent.executable ?? "opencode",
     args: ["acp", "--cwd", args.worktree, "--print-logs", "--log-level", "ERROR"],
@@ -887,12 +891,23 @@ async function runOpenCodeAcpJob({ args, job, session, selectedAgent, timeoutSec
         mcpServers: []
       });
     providerSessionId = providerSessionId ?? sessionResult.sessionId;
+    agentConfigOptions = summarizeAcpConfigOptions(sessionResult.configOptions);
+    availableModels = extractModelOptions(agentConfigOptions);
     events.push({
       type: session.providerSessionId ? "acp_session_resumed" : "acp_session_created",
       timestamp: new Date().toISOString(),
       message: `OpenCode ACP session ready: ${providerSessionId}`,
       providerSessionId
     });
+    if (agentConfigOptions.length > 0) {
+      events.push({
+        type: "acp_config_options",
+        timestamp: new Date().toISOString(),
+        message: `OpenCode ACP exposed ${agentConfigOptions.length} config option(s), including ${availableModels.length} model option(s).`,
+        configOptions: agentConfigOptions,
+        availableModels
+      });
+    }
 
     const promptResult = await client.request("session/prompt", {
       sessionId: providerSessionId,
@@ -924,6 +939,8 @@ async function runOpenCodeAcpJob({ args, job, session, selectedAgent, timeoutSec
       ],
       sessionPatch: {
         providerSessionId,
+        agentConfigOptions,
+        availableModels,
         status: "idle",
         canContinue: true
       },
@@ -935,6 +952,8 @@ async function runOpenCodeAcpJob({ args, job, session, selectedAgent, timeoutSec
         stopReason,
         failureReason: null,
         agentErrors: [],
+        agentConfigOptions,
+        availableModels,
         changedFiles,
         worktreeState: {
           before: job.worktreeState,
@@ -967,6 +986,8 @@ async function runOpenCodeAcpJob({ args, job, session, selectedAgent, timeoutSec
       ],
       sessionPatch: {
         providerSessionId,
+        agentConfigOptions,
+        availableModels,
         status: "idle",
         canContinue: Boolean(providerSessionId)
       },
@@ -977,6 +998,8 @@ async function runOpenCodeAcpJob({ args, job, session, selectedAgent, timeoutSec
         providerSessionId,
         failureReason,
         agentErrors,
+        agentConfigOptions,
+        availableModels,
         changedFiles: diffChangedFiles(job.worktreeState, afterState),
         worktreeState: {
           before: job.worktreeState,
@@ -1423,6 +1446,64 @@ function summarizeInitializeResult(result) {
     },
     authMethods: (result.authMethods ?? []).map((method) => ({ id: method.id, name: method.name }))
   };
+}
+
+function summarizeAcpConfigOptions(configOptions) {
+  if (!Array.isArray(configOptions)) return [];
+  return configOptions
+    .map((option) => {
+      const id = option.id ?? option.configId ?? null;
+      const title = option.title ?? option.name ?? option.label ?? id;
+      const category = option.category ?? null;
+      const description = option.description ? preview(option.description, 300) : null;
+      const choices = summarizeConfigChoices(option.options ?? option.values ?? option.choices);
+      return {
+        id,
+        title,
+        category,
+        type: option.type ?? option.input?.type ?? (choices.length > 0 ? "select" : null),
+        description,
+        currentValue: summarizeConfigValue(option.value ?? option.currentValue ?? option.defaultValue),
+        options: choices
+      };
+    })
+    .filter((option) => option.id || option.category || option.options.length > 0);
+}
+
+function summarizeConfigChoices(choices) {
+  if (!Array.isArray(choices)) return [];
+  return choices.map((choice) => {
+    if (typeof choice === "string") return { value: choice, label: choice };
+    if (!isPlainObject(choice)) return null;
+    const value = choice.value ?? choice.id ?? choice.name ?? choice.label ?? choice.title;
+    const label = choice.label ?? choice.title ?? choice.name ?? choice.value ?? choice.id;
+    if (typeof value !== "string" || !value) return null;
+    return {
+      value,
+      label: typeof label === "string" && label ? label : value,
+      description: choice.description ? preview(choice.description, 300) : null
+    };
+  }).filter(Boolean);
+}
+
+function summarizeConfigValue(value) {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  return null;
+}
+
+function extractModelOptions(configOptions) {
+  return configOptions
+    .filter((option) => (
+      option.category === "model"
+      || /model/i.test(option.id ?? "")
+      || /model/i.test(option.title ?? "")
+    ))
+    .flatMap((option) => option.options.map((choice) => ({
+      configId: option.id,
+      value: choice.value,
+      label: choice.label,
+      description: choice.description
+    })));
 }
 
 function buildDispatchPrompt(prompt) {
