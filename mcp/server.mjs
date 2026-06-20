@@ -203,3 +203,11 @@ async function startMcpServer() {
 }
 
 export { startMcpServer };
+
+import { fileURLToPath } from "node:url";
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  startMcpServer().catch((err) => {
+    process.stderr.write(`agent-router: ${err.message}\n`);
+    process.exit(1);
+  });
+}
