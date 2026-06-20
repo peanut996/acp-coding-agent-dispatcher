@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 
 const SERVER_NAME = "agent-router";
-const SERVER_VERSION = "0.7.1";
+const SERVER_VERSION = "0.8.0";
 const DATA_DIR = process.env.AGENT_ROUTER_DATA_DIR
   ? path.resolve(process.env.AGENT_ROUTER_DATA_DIR)
   : path.join(os.homedir(), ".agent-router");
