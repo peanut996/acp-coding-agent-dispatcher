@@ -59,6 +59,16 @@ const ACP_MODE_MAP: AcpModeMap = {
     plan: "plan",
     acceptEdits: "build",
     bypassPermissions: "build"
+  },
+  gemini: {
+    plan: "plan",
+    acceptEdits: "acceptEdits",
+    bypassPermissions: "bypassPermissions"
+  },
+  devin: {
+    plan: "plan",
+    acceptEdits: "acceptEdits",
+    bypassPermissions: "bypassPermissions"
   }
 };
 
@@ -130,6 +140,44 @@ const BUILT_IN_AGENTS: BuiltInAgent[] = [
     capabilities: ["file_edit", "shell", "diff_collection"],
     source: ["path"],
     notes: ["ACP adapter preferred when codex-acp is installed. Use cautiously to avoid recursive control loops; require an isolated worktree."]
+  },
+  {
+    id: "gemini",
+    displayName: "Gemini CLI",
+    executable: "gemini",
+    versionArgs: ["--version"],
+    transport: "acp_stdio",
+    command: "gemini --acp",
+    acp: {
+      executable: "gemini",
+      versionArgs: ["--version"],
+      adapterStatus: "gemini_acp",
+      label: "Gemini CLI ACP",
+      buildArgsKey: "gemini",
+      buildArgs: () => ["--acp"]
+    },
+    capabilities: ["file_edit", "shell", "diff_collection"],
+    source: ["path", "registry"],
+    notes: ["Google's official Gemini CLI with ACP support. Launches via npx @google/gemini-cli --acp when not on PATH."]
+  },
+  {
+    id: "devin",
+    displayName: "Devin",
+    executable: "devin",
+    versionArgs: ["--version"],
+    transport: "acp_stdio",
+    command: "devin acp",
+    acp: {
+      executable: "devin",
+      versionArgs: ["--version"],
+      adapterStatus: "devin_acp",
+      label: "Devin ACP",
+      buildArgsKey: "devin",
+      buildArgs: () => ["acp"]
+    },
+    capabilities: ["file_edit", "shell", "diff_collection"],
+    source: ["path", "registry"],
+    notes: ["Devin CLI coding agent by Cognition. Launches via binary distribution when not on PATH."]
   }
 ];
 
@@ -138,7 +186,14 @@ const AGENT_ENV_ALLOWLIST: readonly string[] = [
   "ANTHROPIC_AUTH_TOKEN",
   "ANTHROPIC_BASE_URL",
   "CLAUDE_CODE_OAUTH_TOKEN",
-  "CLAUDE_CONFIG_DIR"
+  "CLAUDE_CONFIG_DIR",
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_GENAI_USE_VERTEXAI",
+  "GOOGLE_CLOUD_PROJECT",
+  "GOOGLE_CLOUD_LOCATION",
+  "DEVIN_API_KEY",
+  "OPENAI_API_KEY"
 ];
 
 const AGENT_ERROR_PATTERNS: readonly RegExp[] = [

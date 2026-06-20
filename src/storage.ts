@@ -637,7 +637,9 @@ function mapRegistryAgentToRouterId(registryId: string): string | null {
   const mapping: Record<string, string> = {
     "claude-acp": "claude",
     "codex-acp": "codex",
-    opencode: "opencode"
+    opencode: "opencode",
+    gemini: "gemini",
+    devin: "devin"
   };
   return mapping[registryId] ?? null;
 }
@@ -648,9 +650,15 @@ function extractRegistryNpxPackage(registryAgent: RegistryAgent): string | null 
   return typeof npxPackage === "string" && npxPackage ? npxPackage : null;
 }
 
-function buildNpxAcpFallback(npxPackage: string): { launchCommand: string[] } {
+function extractRegistryNpxArgs(registryAgent: RegistryAgent): string[] {
+  const distribution = registryAgent.distribution;
+  const args = distribution?.npx?.args;
+  return Array.isArray(args) ? args.filter((a: unknown) => typeof a === "string") : [];
+}
+
+function buildNpxAcpFallback(npxPackage: string, extraArgs: string[] = []): { launchCommand: string[] } {
   return {
-    launchCommand: ["npx", "--yes", npxPackage]
+    launchCommand: ["npx", "--yes", npxPackage, ...extraArgs]
   };
 }
 
@@ -698,6 +706,7 @@ export {
   buildAcpRegistryResult,
   mapRegistryAgentToRouterId,
   extractRegistryNpxPackage,
+  extractRegistryNpxArgs,
   buildNpxAcpFallback,
   buildRegistryInstallHint,
   getRegistryPlatformKey

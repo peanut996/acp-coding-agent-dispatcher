@@ -10,6 +10,7 @@ import {
   writeJson,
   buildRegistryInstallHint,
   extractRegistryNpxPackage,
+  extractRegistryNpxArgs,
   buildNpxAcpFallback
 } from "./storage.js";
 
@@ -257,8 +258,9 @@ function enrichAgentWithRegistry(agent: EnrichedAgent, acpRegistry: AcpRegistryR
     ? registryAgent.version.trim()
     : null;
   const npxPackage = extractRegistryNpxPackage(registryAgent);
+  const npxArgs = extractRegistryNpxArgs(registryAgent);
   const npxFallback = agent.acp && !agent.acp.available && npxPackage
-    ? buildNpxAcpFallback(npxPackage)
+    ? buildNpxAcpFallback(npxPackage, npxArgs)
     : null;
   const acpVersionFromRegistry = Boolean(agent.acp?.available && !agent.acp.version && registryVersion);
   const notes = acpVersionFromRegistry
