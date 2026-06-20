@@ -87,6 +87,8 @@ try {
     || result.tailAfterEventCount !== 1
     || result.tailAfterFirstEventIndex !== 2
     || !result.availableModels?.some((model) => model.value === "opencode-go/glm-5.2")
+    || result.runHasModeOption !== true
+    || result.runModeSetValue !== "build"
     || result.failureStatus !== "timed_out"
     || !result.failureReason?.includes("Insufficient balance")
     || !result.agentErrors?.some((error) => error.includes("Rate limit exceeded"))
@@ -174,7 +176,9 @@ process.stdin.on("data", (chunk) => {
     if (message.method === "initialize") {
       write({ jsonrpc: "2.0", id: message.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {}, list: {} } }, agentInfo: { name: "Fake OpenCode", version: "0.0.0" }, authMethods: [] } });
     } else if (message.method === "session/new" || message.method === "session/resume") {
-      write({ jsonrpc: "2.0", id: message.id, result: { sessionId: "fake-opencode-session", configOptions: [{ id: "model", title: "Model", category: "model", type: "select", options: [{ value: "opencode-go/glm-5.2", label: "GLM-5.2" }, { value: "opencode-go/kimi-k2", label: "Kimi K2" }] }] } });
+      write({ jsonrpc: "2.0", id: message.id, result: { sessionId: "fake-opencode-session", configOptions: [{ id: "model", title: "Model", category: "model", type: "select", options: [{ value: "opencode-go/glm-5.2", label: "GLM-5.2" }, { value: "opencode-go/kimi-k2", label: "Kimi K2" }] }, { id: "mode", title: "Mode", category: "mode", type: "select", options: [{ value: "plan", label: "Plan" }, { value: "build", label: "Build" }], value: "plan" }] } });
+    } else if (message.method === "session/set_config_option") {
+      write({ jsonrpc: "2.0", id: message.id, result: { sessionId: "fake-opencode-session", configOptions: [{ id: "model", title: "Model", category: "model", type: "select", options: [{ value: "opencode-go/glm-5.2", label: "GLM-5.2" }, { value: "opencode-go/kimi-k2", label: "Kimi K2" }] }, { id: "mode", title: "Mode", category: "mode", type: "select", options: [{ value: "plan", label: "Plan" }, { value: "build", label: "Build" }], value: message.params?.value ?? "plan" }] } });
     } else if (message.method === "session/prompt") {
       const promptText = (message.params.prompt ?? []).map((part) => part.text ?? "").join("\\n");
       if (promptText.includes("Smoke async cancel") || promptText.includes("Smoke orphan recovery")) {
@@ -735,6 +739,8 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile, registryPath) {
     tailAfterEventCount: parsedToolResults[42]?.events?.length,
     tailAfterFirstEventIndex: parsedToolResults[42]?.events?.[0]?.eventIndex,
     availableModels: parsedToolResults[4]?.availableModels,
+    runHasModeOption: parsedToolResults[4]?.agentConfigOptions?.some((o) => o.id === "mode" || o.category === "mode"),
+    runModeSetValue: parsedToolResults[4]?.agentConfigOptions?.find((o) => o.id === "mode" || o.category === "mode")?.currentValue,
     codexDiscoveredVersion: parsedToolResults[3]?.agents?.find((agent) => agent.id === "codex")?.version,
     codexAcpVersion: parsedToolResults[3]?.agents?.find((agent) => agent.id === "codex")?.acp?.version,
     codexHasAcpProbeFailedNote: parsedToolResults[3]?.agents?.find((agent) => agent.id === "codex")?.notes
