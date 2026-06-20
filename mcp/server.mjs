@@ -48,6 +48,7 @@ async function startMcpServer() {
       registryCacheTtlSec: z.number().optional().describe("ACP registry cache TTL in seconds"),
       launchExternalAgents: z.boolean().optional().describe("Allow launching external agent processes"),
       allowBypassPermissions: z.boolean().optional().describe("Allow bypassPermissions permission profile"),
+      defaultPermissionProfile: z.enum(["plan", "acceptEdits", "bypassPermissions"]).optional().describe("Default permission profile for new jobs"),
       inheritEnvironment: z.boolean().optional().describe("Inherit parent process environment for child agents"),
       modeDefaults: z.record(z.string(), z.unknown()).optional().describe("Per-mode default agent id mapping")
     },

@@ -45,6 +45,9 @@ async function configureDispatcher(args) {
     allowBypassPermissions: typeof args.allowBypassPermissions === "boolean"
       ? args.allowBypassPermissions
       : existing.safety.allowBypassPermissions,
+    defaultPermissionProfile: typeof args.defaultPermissionProfile === "string"
+      ? args.defaultPermissionProfile
+      : existing.safety.defaultPermissionProfile,
     inheritEnvironment: typeof args.inheritEnvironment === "boolean"
       ? args.inheritEnvironment
       : existing.safety.inheritEnvironment

@@ -68,6 +68,7 @@ Options:
     process.stderr.write("Error: --worktree and --prompt are required\n");
     process.exit(1);
   }
+  const wantStream = args.stream === true;
   const jobArgs = {
     worktree: args.worktree,
     prompt: args.prompt,
@@ -77,10 +78,10 @@ Options:
     permissionProfile: args["permission-profile"],
     collectDiff: args["collect-diff"] === "false" ? false : undefined,
     sessionId: args["session-id"],
-    async: false
+    async: wantStream
   };
   const result = await createJob(jobArgs);
-  if (args.stream && result.jobId && result.status === "running") {
+  if (wantStream && result.jobId) {
     let lastIndex = -1;
     while (true) {
       const tail = await tailJobEvents({ jobId: result.jobId, afterEventIndex: lastIndex, limit: 50 });

@@ -35,6 +35,9 @@ async function readConfig() {
     updatedAt: null
   };
   const stored = await readJson(CONFIG_PATH, defaults);
+  const profileAliases = { workspace_write: "acceptEdits", accept_edits: "acceptEdits", bypass_permissions: "bypassPermissions" };
+  const rawProfile = isPlainObject(stored.safety) ? stored.safety.defaultPermissionProfile : undefined;
+  const migratedProfile = profileAliases[rawProfile] ?? rawProfile;
   return {
     ...defaults,
     ...stored,
@@ -45,7 +48,8 @@ async function readConfig() {
     registryCacheTtlSec: Number.isInteger(stored.registryCacheTtlSec) ? stored.registryCacheTtlSec : defaults.registryCacheTtlSec,
     safety: {
       ...defaults.safety,
-      ...(isPlainObject(stored.safety) ? stored.safety : {})
+      ...(isPlainObject(stored.safety) ? stored.safety : {}),
+      ...(migratedProfile && migratedProfile !== rawProfile ? { defaultPermissionProfile: migratedProfile } : {})
     }
   };
 }
