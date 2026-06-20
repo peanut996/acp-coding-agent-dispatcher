@@ -522,13 +522,14 @@ async function maybeListNativeSessions({ args, config, registry }) {
 
   const sessions = [];
   const agents = [];
-  for (const agent of acpAgents) {
-    try {
-      const result = await listAcpNativeSessions({
-        selectedAgent: agent,
-        worktree: args.worktree ?? null,
-        env: safeEnv({ inheritEnvironment: config.safety.inheritEnvironment === true })
-      });
+  const results = await Promise.allSettled(acpAgents.map((agent) => listAcpNativeSessions({
+    selectedAgent: agent,
+    worktree: args.worktree ?? null,
+    env: safeEnv({ inheritEnvironment: config.safety.inheritEnvironment === true })
+  }).then((result) => ({ agent, result }))));
+  for (const settled of results) {
+    if (settled.status === "fulfilled") {
+      const { agent, result } = settled.value;
       sessions.push(...mapNativeSessions({
         nativeSessions: result.sessions,
         registry,
@@ -543,12 +544,13 @@ async function maybeListNativeSessions({ args, config, registry }) {
         pages: result.pages,
         nextCursor: result.nextCursor ?? null
       });
-    } catch (error) {
+    } else {
+      const agent = acpAgents[results.indexOf(settled)];
       agents.push({
         attempted: true,
         agentId: agent.id,
         supported: null,
-        error: error.message
+        error: settled.reason?.message ?? String(settled.reason)
       });
     }
   }

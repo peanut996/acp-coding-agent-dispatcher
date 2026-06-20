@@ -225,6 +225,11 @@ class AcpStdioClient {
     this.pending.clear();
     if (this.child && !this.child.killed) {
       this.child.kill("SIGTERM");
+      setTimeout(() => {
+        if (this.child && !this.child.killed) {
+          this.child.kill("SIGKILL");
+        }
+      }, 1000).unref();
     }
   }
 }
