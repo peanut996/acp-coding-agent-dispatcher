@@ -513,12 +513,6 @@ async function persistJobRunResult({ job, session, selectedAgent, runResult }) {
   registry.jobs[currentJob.jobId] = currentJob;
   registry.sessions[currentSession.sessionId] = currentSession;
   await writeRegistry(registry);
-  await appendJsonl(currentJob.logPath, runResult.events.map((event) => ({
-    ...event,
-    jobId: currentJob.jobId,
-    sessionId: currentJob.sessionId,
-    agentId: selectedAgent.id
-  })));
 }
 
 async function markJobRunCrashed(runRequest, error) {
@@ -1740,6 +1734,16 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
   let providerSessionId = session.providerSessionId ?? null;
   let agentConfigOptions = [];
   let availableModels = [];
+  let writeChain = Promise.resolve();
+  const streamEvent = (event) => {
+    events.push(event);
+    writeChain = writeChain.then(() => appendJsonl(job.logPath, [{
+      ...event,
+      jobId: job.jobId,
+      sessionId: job.sessionId,
+      agentId: selectedAgent.id
+    }]).catch(() => {}));
+  };
   const client = new AcpStdioClient({
     command: launchTarget.command,
     args: launchTarget.args,
@@ -1747,7 +1751,7 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
     timeoutMs: timeoutSec * 1000,
     env: agentEnv,
     permissionProfile,
-    onEvent: (event) => events.push(event),
+    onEvent: streamEvent,
     onProcessStart: (child) => controller?.recordProcess({
       pid: child.pid,
       kind: "acp_stdio",
@@ -1773,7 +1777,7 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
         version: SERVER_VERSION
       }
     });
-    events.push({
+    streamEvent({
       type: "acp_initialize",
       timestamp: new Date().toISOString(),
       message: `${adapterLabel} initialized.`,
@@ -1793,14 +1797,14 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
     providerSessionId = providerSessionId ?? sessionResult.sessionId;
     agentConfigOptions = summarizeAcpConfigOptions(sessionResult.configOptions);
     availableModels = extractModelOptions(agentConfigOptions);
-    events.push({
+    streamEvent({
       type: session.providerSessionId ? "acp_session_resumed" : "acp_session_created",
       timestamp: new Date().toISOString(),
       message: `${adapterLabel} session ready: ${providerSessionId}`,
       providerSessionId
     });
     if (agentConfigOptions.length > 0) {
-      events.push({
+      streamEvent({
         type: "acp_config_options",
         timestamp: new Date().toISOString(),
         message: `${adapterLabel} exposed ${agentConfigOptions.length} config option(s), including ${availableModels.length} model option(s).`,
@@ -1823,7 +1827,7 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
           agentConfigOptions = summarizeAcpConfigOptions(setConfigResult.configOptions);
           availableModels = extractModelOptions(agentConfigOptions);
         }
-        events.push({
+        streamEvent({
           type: "acp_mode_set",
           timestamp: new Date().toISOString(),
           message: `Set ${selectedAgent.id} mode to ${targetMode} (permissionProfile=${permissionProfile}).`,
@@ -1831,7 +1835,7 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
           mode: targetMode
         });
       } else {
-        events.push({
+        streamEvent({
           type: "acp_mode_set_skipped",
           timestamp: new Date().toISOString(),
           message: `${adapterLabel} mode option does not include value "${targetMode}" for permissionProfile=${permissionProfile}; skipping mode setting.`,
@@ -1852,24 +1856,23 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
       ]
     });
     const completedAt = new Date().toISOString();
+    const stopReason = promptResult.stopReason ?? null;
+    for (const logEvent of client.drainLogEvents()) streamEvent(logEvent);
+    streamEvent({
+      type: "acp_prompt_completed",
+      timestamp: completedAt,
+      message: `${adapterLabel} prompt completed with stopReason=${stopReason ?? "unknown"}.`,
+      stopReason
+    });
+    streamEvent(buildAcpProcessClosedEvent(startedAt));
+    await writeChain;
     const afterState = args.collectDiff === false
       ? { skipped: true, reason: "collectDiff disabled" }
       : await collectWorktreeState(args.worktree);
     const changedFiles = diffChangedFiles(job.worktreeState, afterState);
     const agentText = extractAgentText(events);
-    const stopReason = promptResult.stopReason ?? null;
     return {
-      events: [
-        ...events,
-        ...client.drainLogEvents(),
-        {
-          type: "acp_prompt_completed",
-          timestamp: completedAt,
-          message: `${adapterLabel} prompt completed with stopReason=${stopReason ?? "unknown"}.`,
-          stopReason
-        },
-        buildAcpProcessClosedEvent(startedAt)
-      ],
+      events: [...events],
       sessionPatch: {
         providerSessionId,
         agentConfigOptions,
@@ -1899,27 +1902,27 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
     };
   } catch (error) {
     const failedAt = new Date().toISOString();
-    const afterState = args.collectDiff === false
-      ? { skipped: true, reason: "collectDiff disabled" }
-      : await collectWorktreeState(args.worktree);
-    const collectedEvents = [...events, ...client.drainLogEvents()];
+    for (const logEvent of client.drainLogEvents()) streamEvent(logEvent);
+    const collectedEvents = [...events];
     const agentErrors = extractAgentErrors(collectedEvents);
     const cancelled = controller?.cancelRequested === true;
     const failureReason = cancelled
       ? (controller.cancelReason || `${adapterLabel} cancelled by Agent Router caller.`)
       : buildFailureReason(adapterLabel, error, agentErrors);
+    streamEvent({
+      type: cancelled ? "acp_cancelled" : "acp_error",
+      timestamp: failedAt,
+      message: failureReason,
+      errorMessage: error.message,
+      agentErrors
+    });
+    streamEvent(buildAcpProcessClosedEvent(startedAt));
+    await writeChain;
+    const afterState = args.collectDiff === false
+      ? { skipped: true, reason: "collectDiff disabled" }
+      : await collectWorktreeState(args.worktree);
     return {
-      events: [
-        ...collectedEvents,
-        {
-          type: cancelled ? "acp_cancelled" : "acp_error",
-          timestamp: failedAt,
-          message: failureReason,
-          errorMessage: error.message,
-          agentErrors
-        },
-        buildAcpProcessClosedEvent(startedAt)
-      ],
+      events: [...events],
       sessionPatch: {
         providerSessionId,
         agentConfigOptions,
@@ -1953,7 +1956,7 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
 
 function getAcpAdapterArgs(selectedAgent, worktree) {
   if (selectedAgent.id === "opencode") {
-    return ["acp", "--cwd", worktree, "--print-logs", "--log-level", "ERROR"];
+    return ["acp", "--cwd", worktree, "--print-logs", "--log-level", "INFO"];
   }
   return [];
 }
@@ -2034,7 +2037,16 @@ class AcpStdioClient {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        const error = new Error(`ACP request timed out: ${method}`);
+        const stderrTail = this.logEvents
+          .filter((e) => e.type === "acp_stderr")
+          .slice(-5)
+          .map((e) => e.message)
+          .join("\n");
+        const error = new Error(
+          stderrTail
+            ? `ACP request timed out: ${method}. Recent stderr:\n${stderrTail}`
+            : `ACP request timed out: ${method} (no stderr output).`
+        );
         error.code = "timeout";
         reject(error);
       }, this.timeoutMs);
@@ -2144,11 +2156,14 @@ class AcpStdioClient {
 
   handleStderr(chunk) {
     for (const line of chunk.split(/\r?\n/).filter(Boolean)) {
-      this.logEvents.push({
+      const event = {
         type: "acp_stderr",
         timestamp: new Date().toISOString(),
         message: preview(line, 500)
-      });
+      };
+      if (typeof this.onEvent === "function") {
+        try { this.onEvent(event); } catch {}
+      }
     }
   }
 
