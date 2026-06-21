@@ -191,12 +191,9 @@ async function discoverAgents(args: DiscoverAgentsArgs): Promise<DiscoverAgentsR
   const filteredAgents = args.includeNotInstalled === false
     ? agents.filter((agent) => agent.status !== "not_installed")
     : agents;
-  const recommended = chooseAgent(agents, config, null);
   return {
     agents: filteredAgents,
-    recommendedDefaultAgent: recommended.agentId
-      ? { agentId: recommended.agentId, reason: recommended.reason }
-      : null,
+    recommendedDefaultAgent: null,
     registry: acpRegistry.meta,
     refreshedAt: new Date().toISOString()
   };
